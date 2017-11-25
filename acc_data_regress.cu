@@ -20,21 +20,38 @@ struct square
 	}
 };
 
-struct saxpy_functor : public thrust::binary_function<double,double,double>
+struct saxpy
 {
 	const double a;
 
-	saxpy_functor(double _a) : a(_a) {}
+	saxpy(double a_) : a(a_) { }
 
+	__attribute__((always_inline))
 	__host__ __device__
-		double operator()(const double& x, const double& y) const { 
-			return a * x + y;
-		}
+	double operator()(const double& x, const double& y) const
+	{
+		return a * x + y;
+	}
 };
+
+struct saxpb
+{
+	const double a, b;
+	
+	saxpb(double a_, double b_) : a(a_), b(b_) { }
+
+	__attribute__((always_inline))
+	__host__ __device__
+	double operator()(const double& x) const
+	{
+		return a * x + b;
+	}	
+};
+
 void saxpy_fast(double A, thrust::device_vector<double>& X, thrust::device_vector<double>& Y)
 {
 	// Y <- A * X + Y
-	thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
+	thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy(A));
 }
 //序列相乘
 struct xy_functor : public thrust::binary_function<double,double,double>
@@ -92,7 +109,7 @@ int main(void)
 
 	// 序列生成 (time series)
 	thrust::sequence(d_t.begin(), d_t.end());
-	saxpy_fast(t_factor, d_t, d_t2);
+	thrust::transform(d_t.begin(), d_t.end(), d_t2.begin(), d_t2.begin(), saxpy(t_factor));
 	d_t = d_t2;
 
 	// 仿真序列(simulation signal)
@@ -103,21 +120,14 @@ int main(void)
 	
 	clock_t t1 = clock();
 	{
-		// 幅度序列
-		thrust::fill(d_amp.begin(), d_amp.end(), c4);
-
-		// 数传模拟 (host到device，测试用)
-		// c0序列
-		thrust::fill(d_c0.begin(), d_c0.end(), c0);
-
 		// t^2序列
-		thrust::transform(d_t.begin(), d_t.end(), d_t2.begin(),t2_func());
+		thrust::transform(d_t.begin(), d_t.end(), d_t2.begin(), t2_func());
 
 		// t^3序列
-		thrust::transform(d_t.begin(), d_t.end(), d_t3.begin(),t3_func());
+		thrust::transform(d_t.begin(), d_t.end(), d_t3.begin(), t3_func());
 
 		// 线性操作1
-		saxpy_fast(c1, d_t, d_c0);
+		thrust::transform(d_t.begin(), d_t.end(), d_c0.begin(), saxpb(c1, c0));
 
 		// 线性操作2
 		saxpy_fast(c2, d_t2, d_c0);
@@ -126,10 +136,10 @@ int main(void)
 		saxpy_fast(c3, d_t3, d_c0);
 
 		// 三角函数	
-		thrust::transform(d_c0.begin(), d_c0.end(), d_s0.begin(),cos_func());
+		thrust::transform(d_c0.begin(), d_c0.end(), d_s0.begin(), cos_func());
 
 		// 幅度函数
-		saxpy_fast(c5, d_t, d_amp);
+		thrust::transform(d_t.begin(), d_t.end(), d_amp.begin(), saxpb(c5, c4));
 
 		// 形成函数
 		xy_fast(d_amp, d_s0);
