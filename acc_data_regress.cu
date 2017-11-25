@@ -1,3 +1,11 @@
+#define CUDA_ERR_CHECK(x)                                  \
+    do { cudaError_t err = x; if (err != cudaSuccess) {    \
+        fprintf(stderr, "CUDA error %d \"%s\" at %s:%d\n", \
+            (int)err, cudaGetErrorString(err),             \
+            __FILE__, __LINE__);                           \
+        abort();                                           \
+    }} while (0)
+
 #include <limits>
 #include <stdio.h>
 #include <thrust/host_vector.h>
@@ -70,6 +78,25 @@ struct LinearTransform
 	}
 };
 
+class AllocationReuse
+{
+	char* ptr;
+
+public:
+    // just allocate bytes
+    typedef char value_type;
+
+	template<typename T>
+	AllocationReuse(thrust::device_vector<T>& v) : ptr((char*)thrust::raw_pointer_cast(v.data())) { }
+ 
+    char* allocate(std::ptrdiff_t num_bytes)
+    {
+    	return ptr;
+    } 
+
+    void deallocate(char* ptr, size_t n) { }
+};
+
 using namespace std;
 
 int main(void)
@@ -95,13 +122,19 @@ int main(void)
 	{
 		thrust::transform(d_t.begin(), d_t.end(), d_s.begin(), d_s.begin(),
 			LinearTransform(c0, c1, c2, c3, c4, c5));
+		CUDA_ERR_CHECK(cudaDeviceSynchronize());
 	}
 
 	double norm;
 	clock_t t2 = clock();
 	{
+		// Use free d_t vector as a scratch space for reduction.
+		// This way we same time on additional call to cudaMalloc,
+		// which Thrust uses to allocate scratch space by default.
+		AllocationReuse reuse(d_t);
+
 		// 平方 (这里把平方和求和分开了)
-		norm = sqrt(thrust::transform_reduce(
+		norm = sqrt(thrust::transform_reduce(thrust::cuda::par(reuse),
 			d_s.begin(), d_s.end(), SquareTransform(), 0.0, thrust::plus<double>()));
 	}
 	clock_t t3 = clock();
