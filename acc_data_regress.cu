@@ -9,86 +9,65 @@
 #include <iostream>
 #include <cmath>
 
-template <typename T>
-struct square
+struct SquareTransform
 {
 	__attribute__((always_inline))
 	__host__ __device__
-	T operator()(const T& x) const
+	double operator()(const double& x) const
 	{ 
 		return x * x;
 	}
 };
 
-struct saxpy
+struct ScaleTransform
 {
-	const double a;
-
-	saxpy(double a_) : a(a_) { }
-
+	const double c;
+	
+	ScaleTransform(const double& c_) : c(c_) { }
+	
 	__attribute__((always_inline))
 	__host__ __device__
-	double operator()(const double& x, const double& y) const
+	double operator()(const double& t) const
 	{
-		return a * x + y;
+		return c * t;
 	}
 };
 
-struct saxpb
+struct LinearTransform
 {
-	const double a, b;
+	const double c0, c1, c2, c3, c4, c5;
 	
-	saxpb(double a_, double b_) : a(a_), b(b_) { }
+	LinearTransform(
+		const double& c0_, const double& c1_, const double& c2_,
+		const double& c3_, const double& c4_, const double& c5_) :
+	
+	c0(c0_), c1(c1_), c2(c2_), c3(c3_), c4(c4_), c5(c5_) { }
 
 	__attribute__((always_inline))
 	__host__ __device__
-	double operator()(const double& x) const
+	double operator()(const double& t, const double& s) const
 	{
-		return a * x + b;
-	}	
-};
+		// t^2序列
+		double t2 = t * t;
 
-void saxpy_fast(double A, thrust::device_vector<double>& X, thrust::device_vector<double>& Y)
-{
-	// Y <- A * X + Y
-	thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy(A));
-}
-//序列相乘
-struct xy_functor : public thrust::binary_function<double,double,double>
-{
-	__host__ __device__
-		double operator()(const double& x, const double& y) const { 
-			return x * y;
-		}
-};
-void xy_fast(thrust::device_vector<double>& X, thrust::device_vector<double>& Y)
-{
-	// Y <- A * X + Y
-	thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), xy_functor());
-}
+		// t^3序列
+		double t3 = t2 * t;
 
-//cos函数
-struct cos_func {
+		// 线性操作1 & 线性操作2 & 线性操作3
+		double c = c0 + c1 * t + c2 * t2 + c3 * t3;
 
-__host__ __device__
-  double operator()(double x){
-	return cos(x);
-  }
-};
-//序列平方
-struct t2_func {
-__host__ __device__
-  double operator()(double x){
-	return x*x;
-  }
-};
-//序列立方
-struct t3_func {
+		// 三角函数
+		double s0 = cos(c);
 
-__host__ __device__
-  double operator()(double x){
-	return x*x*x;
-  }
+		// 幅度函数
+		double amp = c5 * t + c4;
+
+		// 形成函数
+		s0 *= amp;
+
+		// O-C
+		return -s0 + s;
+	}
 };
 
 using namespace std;
@@ -100,17 +79,11 @@ int main(void)
 	double c0 = 1.0, c1 = 2.0, c2 = 3.0, c3 = 4.0, c4 = 1.0, c5 = 6.0;
 
 	thrust::host_vector<double> h_t(n);
-	thrust::device_vector<double> d_c0(n);
-	thrust::device_vector<double> d_amp(n);
-	thrust::device_vector<double> d_s0(n);
 	thrust::device_vector<double> d_t(n);
-	thrust::device_vector<double> d_t2(n);
-	thrust::device_vector<double> d_t3(n);
 
 	// 序列生成 (time series)
 	thrust::sequence(d_t.begin(), d_t.end());
-	thrust::transform(d_t.begin(), d_t.end(), d_t2.begin(), d_t2.begin(), saxpy(t_factor));
-	d_t = d_t2;
+	thrust::transform(d_t.begin(), d_t.end(), d_t.begin(), ScaleTransform(t_factor));
 
 	// 仿真序列(simulation signal)
 	for (int i = 0; i < n; ++i)
@@ -120,32 +93,8 @@ int main(void)
 	
 	clock_t t1 = clock();
 	{
-		// t^2序列
-		thrust::transform(d_t.begin(), d_t.end(), d_t2.begin(), t2_func());
-
-		// t^3序列
-		thrust::transform(d_t.begin(), d_t.end(), d_t3.begin(), t3_func());
-
-		// 线性操作1
-		thrust::transform(d_t.begin(), d_t.end(), d_c0.begin(), saxpb(c1, c0));
-
-		// 线性操作2
-		saxpy_fast(c2, d_t2, d_c0);
-
-		// 线性操作3
-		saxpy_fast(c3, d_t3, d_c0);
-
-		// 三角函数	
-		thrust::transform(d_c0.begin(), d_c0.end(), d_s0.begin(), cos_func());
-
-		// 幅度函数
-		thrust::transform(d_t.begin(), d_t.end(), d_amp.begin(), saxpb(c5, c4));
-
-		// 形成函数
-		xy_fast(d_amp, d_s0);
-
-		// O-C
-		saxpy_fast(-1.0, d_s0, d_s);
+		thrust::transform(d_t.begin(), d_t.end(), d_s.begin(), d_s.begin(),
+			LinearTransform(c0, c1, c2, c3, c4, c5));
 	}
 
 	double norm;
@@ -153,7 +102,7 @@ int main(void)
 	{
 		// 平方 (这里把平方和求和分开了)
 		norm = sqrt(thrust::transform_reduce(
-			d_s.begin(), d_s.end(), square<double>(), 0.0, thrust::plus<double>()));
+			d_s.begin(), d_s.end(), SquareTransform(), 0.0, thrust::plus<double>()));
 	}
 	clock_t t3 = clock();
 
