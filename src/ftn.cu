@@ -1,21 +1,9 @@
-#define CUDA_ERR_CHECK(x)                                  \
-    do { cudaError_t err = x; if (err != cudaSuccess) {    \
-        fprintf(stderr, "CUDA error %d \"%s\" at %s:%d\n", \
-            (int)err, cudaGetErrorString(err),             \
-            __FILE__, __LINE__);                           \
-        abort();                                           \
-    }} while (0)
-
-#include <limits>
-#include <stdio.h>
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-#include <thrust/transform.h>
-#include <thrust/sequence.h>
+#include <cstdio>
 #include <thrust/transform_reduce.h>
-#include <algorithm>
-#include <iostream>
 #include <cmath>
+
+#include "check.h"
+#include "GPU.h"
 
 struct SquareTransform
 {
@@ -53,8 +41,13 @@ struct LinearTransform
 
 	__attribute__((always_inline))
 	__host__ __device__
-	double operator()(const double& t, const double& s) const
+	double operator()(const thrust::tuple<double, int> pair) const
 	{
+		double t;
+		int s;
+		
+		thrust::tie(t, s) = pair;
+		
 		// t^2序列
 		double t2 = t * t;
 
@@ -74,20 +67,22 @@ struct LinearTransform
 		s0 *= amp;
 
 		// O-C
-		return -s0 + s;
+		return (-s0 + s) * (-s0 + s);
 	}
 };
 
-class AllocationReuse
+class ReductionScratchSpace
 {
 	char* ptr;
 
-public:
+public :
     // just allocate bytes
     typedef char value_type;
 
+	ReductionScratchSpace() { }
+
 	template<typename T>
-	AllocationReuse(thrust::device_vector<T>& v) : ptr((char*)thrust::raw_pointer_cast(v.data())) { }
+	ReductionScratchSpace(T* ptr_) : ptr((char*)ptr_) { }
  
     char* allocate(std::ptrdiff_t num_bytes)
     {
@@ -100,27 +95,70 @@ public:
 namespace ftn
 {
 	long long length = 0;
+	
+	// CPU vectors.
 	double* tt = NULL;
 	int* s0 = NULL;
+
+	// GPU vectors. Wrap into smart pointer, in order to
+	// avoid possible initialization before GPU driver.
+	double* d_tt = NULL;
+	int* d_s0 = NULL;
+	
+	// Scratch space for Thrust reduction.
+	double* d_scratch = NULL;
+
+	// Use preallocated vector as a scratch space for reduction.
+	// This way we same time on additional call to cudaMalloc,
+	// which Thrust uses to allocate scratch space by default
+	// each time it does reduction.
+	ReductionScratchSpace scratchSpace;
 }
 
 extern "C" void ftn_set_length(long long* length_)
 {
 	ftn::length = *length_;
+	
+	if (GPU::isAvailable())
+	{
+		// Initialize GPU vectors.
+		GPU::mfree();
+		ftn::d_tt = (double*)GPU::malloc(ftn::length * sizeof(double));
+		ftn::d_scratch = (double*)GPU::malloc(ftn::length * sizeof(double));
+		ftn::d_s0 = (int*)GPU::malloc(ftn::length * sizeof(int));
+		
+		ftn::scratchSpace = ReductionScratchSpace(ftn::d_scratch);
+	}
 }
 
 extern "C" void ftn_set_tt(double* tt_)
 {
 	ftn::tt = tt_;
+	
+	if (GPU::isAvailable())
+	{
+		// Fill GPU counterpart.
+		CUDA_ERR_CHECK(cudaMemcpy(ftn::d_tt, ftn::tt,
+			ftn::length * sizeof(double), cudaMemcpyHostToDevice));
+	}
 }
 
 extern "C" void ftn_set_s0(int* s0_)
 {
 	ftn::s0 = s0_;
+
+	if (GPU::isAvailable())
+	{
+		// Fill GPU counterpart.
+		CUDA_ERR_CHECK(cudaMemcpy(ftn::d_s0, ftn::s0,
+			ftn::length * sizeof(int), cudaMemcpyHostToDevice));
+	}
 }
 
 extern "C" void ftn_eval(const double* x, double* result_)
 {
+	clock_t t1 = clock();
+
 	if (!ftn::length)
 	{
 		fprintf(stderr, "ftn_eval: t and s0 vectors length was not properly set (ftn_set_length must be called first)\n");
@@ -139,65 +177,34 @@ extern "C" void ftn_eval(const double* x, double* result_)
 
 	double result = 0;
 	
-	#pragma omp parallel for reduction(+:result) schedule(dynamic, 100)
-	for (long long i = 0; i < ftn::length; i++)
+	if (!GPU::isAvailable())
 	{
-		const double t = ftn::tt[i];
-		double val = ((x[4] + x[5] * t) * cos(x[0] + x[1] * t + x[2] * t * t + x[3] * t * t * t) - ftn::s0[i]);
-		result += val * val;
+		// Process on multicore CPU, if GPU is not available.
+		#pragma omp parallel for reduction(+:result) schedule(dynamic, 100)
+		for (long long i = 0; i < ftn::length; i++)
+		{
+			const double t = ftn::tt[i];
+			double val = ((x[4] + x[5] * t) * cos(x[0] + x[1] * t + x[2] * t * t + x[3] * t * t * t) - ftn::s0[i]);
+			result += val * val;
+		}
+	}
+	else
+	{
+		result = thrust::transform_reduce(thrust::cuda::par(ftn::scratchSpace),
+			thrust::make_zip_iterator(thrust::make_tuple(ftn::d_tt, ftn::d_s0)),
+			thrust::make_zip_iterator(thrust::make_tuple(ftn::d_tt + ftn::length, ftn::d_s0 + ftn::length)),
+			LinearTransform(x[0], x[1], x[2], x[3], x[4], x[5]), 0.0, thrust::plus<double>());
+		CUDA_ERR_CHECK(cudaDeviceSynchronize());
 	}
 
 	result = sqrt(result / ftn::length);
 	*result_ = result;
-}
 
-using namespace std;
-
-int main_(void)
-{
-	int n = 1000000;
-	double t_factor = 1.0 / n;
-	double c0 = 1.0, c1 = 2.0, c2 = 3.0, c3 = 4.0, c4 = 1.0, c5 = 6.0;
-
-	thrust::host_vector<double> h_t(n);
-	thrust::device_vector<double> d_t(n);
-
-	// 序列生成 (time series)
-	thrust::sequence(d_t.begin(), d_t.end());
-	thrust::transform(d_t.begin(), d_t.end(), d_t.begin(), ScaleTransform(t_factor));
-
-	// 仿真序列(simulation signal)
-	for (int i = 0; i < n; ++i)
-		h_t[i] = rand() / (double)RAND_MAX;
-
-	thrust::device_vector<double> d_s = h_t;
-	
-	clock_t t1 = clock();
-	{
-		thrust::transform(d_t.begin(), d_t.end(), d_s.begin(), d_s.begin(),
-			LinearTransform(c0, c1, c2, c3, c4, c5));
-		CUDA_ERR_CHECK(cudaDeviceSynchronize());
-	}
-
-	double norm;
 	clock_t t2 = clock();
-	{
-		// Use free d_t vector as a scratch space for reduction.
-		// This way we same time on additional call to cudaMalloc,
-		// which Thrust uses to allocate scratch space by default.
-		AllocationReuse reuse(d_t);
 
-		// 平方 (这里把平方和求和分开了)
-		norm = sqrt(thrust::transform_reduce(thrust::cuda::par(reuse),
-			d_s.begin(), d_s.end(), SquareTransform(), 0.0, thrust::plus<double>()));
-	}
-	clock_t t3 = clock();
-
-	cout << "平方 (linear opration) : " << (double)(t2 - t1) * 1000.0 / CLOCKS_PER_SEC << " ms" << endl;
-	cout << "求和 (reduction) : " << (double)(t3 - t2) * 1000.0 / CLOCKS_PER_SEC << " ms" << endl;
-	cout.precision(std::numeric_limits<double>::max_digits10 + 1);
-	cout << "范数 (norm) : " << norm << endl;
-
-	return 0;
+#if 0
+	printf("平方 + 求和 (linear opration + reducion) : %f ms\n",
+		(double)(t2 - t1) * 1000.0 / CLOCKS_PER_SEC);
+#endif
 }
 
