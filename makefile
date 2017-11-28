@@ -5,16 +5,17 @@ CXXFLAGS = -std=c++11 -g -O3 -ffast-math -fopenmp -fdata-sections -ffunction-sec
 F90FLAGS = -g -O3 -ffast-math -fopenmp -Jobj/ -ffree-line-length-none -fdata-sections -ffunction-sections
 FCFLAGS = -g -O3 -ffast-math -Iinclude/ -fdata-sections -ffunction-sections
 LDFLAGS = -Xcompiler=-fopenmp -Xlinker=--gc-sections
-NVCCFLAGS = -std=c++11 -g -O3 -Xcompiler=-ffast-math -Xcompiler=-fopenmp -Xcompiler=-fdata-sections -Xcompiler=-ffunction-sections
+NVCCFLAGS = -std=c++11 -g -O3 -Xcompiler=-ffast-math -Xcompiler=-fopenmp -Iinclude/ -Xcompiler=-fdata-sections -Xcompiler=-ffunction-sections
 else
 CXXFLAGS = -std=c++11 -g -O0
 F90FLAGS = -g -O0 -Jobj/ -ffree-line-length-none
 FCFLAGS = -g -O0 -Iinclude/
 LDFLAGS =
-NVCCFLAGS = -std=c++11 -g -O0 -G
+NVCCFLAGS = -std=c++11 -g -O0 -G -Iinclude/
 endif
 
-GPUARCH = 35 # Kepler CC 3.5
+GPUARCH += -gencode=arch=compute_35,code=sm_35 # Kepler GK110 CC 3.5
+GPUARCH += -gencode=arch=compute_61,code=sm_61 # Pascal GP106 CC 6.1
 
 .SUFFIXES: .cpp .f .f90 .cu .cpp.o .f.o .f90.o .cu.o
 
@@ -49,7 +50,7 @@ obj/%.f.o: src/%.f
 	mkdir -p obj && gfortran $(FCFLAGS) -c $< -o $@
 
 obj/%.cu.o: src/%.cu
-	mkdir -p obj && nvcc -arch=sm_$(GPUARCH) $(NVCCFLAGS) -c $< -o $@
+	mkdir -p obj && nvcc $(GPUARCH) $(NVCCFLAGS) -c $< -o $@
 
 clean:
 	rm -rf bin obj
