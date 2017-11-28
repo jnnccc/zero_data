@@ -97,6 +97,60 @@ public:
     void deallocate(char* ptr, size_t n) { }
 };
 
+namespace ftn
+{
+	long long length = 0;
+	double* tt = NULL;
+	int* s0 = NULL;
+}
+
+extern "C" void ftn_set_length(long long* length_)
+{
+	ftn::length = *length_;
+}
+
+extern "C" void ftn_set_tt(double* tt_)
+{
+	ftn::tt = tt_;
+}
+
+extern "C" void ftn_set_s0(int* s0_)
+{
+	ftn::s0 = s0_;
+}
+
+extern "C" void ftn_eval(const double* x, double* result_)
+{
+	if (!ftn::length)
+	{
+		fprintf(stderr, "ftn_eval: t and s0 vectors length was not properly set (ftn_set_length must be called first)\n");
+		exit(-1);
+	}
+	if (!ftn::tt)
+	{
+		fprintf(stderr, "ftn_eval: t vector was not properly set (ftn_set_tt must be called first)\n");
+		exit(-1);
+	}
+	if (!ftn::s0)
+	{
+		fprintf(stderr, "ftn_eval: s0 vector was not properly set (ftn_set_s0 must be called first)\n");
+		exit(-1);
+	}
+
+	double result = 0;
+	
+	#pragma omp parallel for reduction(+:result) schedule(dynamic, 100)
+	for (long long i = 0; i < ftn::length; i++)
+	{
+		const double t = ftn::tt[i];
+		double val = ((x[4] + x[5] * t) * cos(x[0] + x[1] * t + x[2] * t * t + x[3] * t * t * t) - ftn::s0[i]);
+		result += val * val;
+	}
+
+	result = sqrt(result / ftn::length);
+	*result_ = result;
+}
+
 using namespace std;
 
 int main_(void)

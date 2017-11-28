@@ -1,4 +1,5 @@
 module module10
+use ftn
 use plot_module ,only: plot1
 use lib_array
 use param
@@ -22,7 +23,6 @@ real*8,parameter:: perr=1d-10
 private
 public program10, utcsta,utcsto,utc1,utc2,datai,dataq!,program10
 contains
-
 subroutine program10
 implicit none
 RSR_data_PAR%DATAFILE=trim(RSR_data_PAR%DATAFILE)//C_NULL_CHAR
@@ -34,6 +34,7 @@ case (0)
 case (1)
 	call rsrinfo(RSR_data_PAR%DATAFILE)
 	N_data=sampling
+	call ftn_set_length(N_data)
 !	write(*,*)sampling
 	allocate(datai(N_data),dataq(N_data))
 	write(*,*)utcsta,utcsto
@@ -41,11 +42,13 @@ case (1)
 case (2,4)
 	call rsrinfo(RSR_data_PAR%DATAFILE)
 	N_data=sampling*RSR_data_PAR%span2
+	call ftn_set_length(N_data)
 	allocate(tt(N_data),datai(N_data),dataq(N_data),s0(N_data))
 	call data_process_2
 case (3)
 	call rsrinfo(RSR_data_PAR%DATAFILE)
 	N_data=sampling*RSR_data_PAR%span2+1
+	call ftn_set_length(N_data)
 	allocate(datai(N_data),dataq(N_data))
      call data_process_3
 case default
@@ -181,6 +184,7 @@ ET1=dble(floor(ET1)-1)+dble(ET1-floor(ET1))
 etemp=et0
 N=floor((ET1-ET0)/RSR_data_PAR%span2)
 call linspace(-dble(RSR_data_PAR%span2)/2.d0,dble(RSR_data_PAR%span2)/2.d0-1.d0/dble(sampling),tt)
+call ftn_set_tt(tt(1))
 ihealth=0
 inorm=0
 bestmem_XC=0.d0
@@ -208,6 +212,7 @@ case(2)
 case default
 	write(*,*) 'wrong data type'
 end select
+call ftn_set_s0(s0(1))
 if (ihealth==0) then
 call check_data  !判断数据质量，并给出部分边界参数
 endif
@@ -223,7 +228,7 @@ write(idebug,*)'--------------------'
 		itermax=RSR_data_PAR%itermax
 	endif
 
-call DE_Fortran90(FTN, Dim_XC, RSR_data_PAR%XCmin, RSR_data_PAR%XCmax, VTR, NP, itermax, F_XC,&
+call DE_Fortran90(ftn_eval, Dim_XC, RSR_data_PAR%XCmin, RSR_data_PAR%XCmax, VTR, NP, itermax, F_XC,&
                 CR_XC, strategy, refresh, bestmem_XC, bestval, nfeval, F_CR, method)
 	if(	  dabs(bestmem_XC(2)-RSR_data_PAR%XCmin(2)).le.perr.or.dabs(bestmem_XC(2)-RSR_data_PAR%XCmax(2)).le.perr.or. &
   		& dabs(bestmem_XC(3)-RSR_data_PAR%XCmin(3)).le.perr.or.dabs(bestmem_XC(3)-RSR_data_PAR%XCmax(3)).le.perr.or. &
@@ -389,21 +394,6 @@ write(iwrite,118)utc2(1:23),phi_r,fre_r
 119 FORMAT(A23,f8.3, f13.3,f10.3,f9.3,f10.1,f10.1,f20.6,f15.3,i5)
 !120 FORMAT(A21,f8.3, f13.3)
 end subroutine reout
-
-subroutine FTN(X, objval)
-  implicit none
-  real(kind=8), dimension(6), intent(in) :: X
-  real(kind=8), intent(out) :: objval
-  integer(kind=8) :: i,chunk
-  CHUNK =100
-  objval=0.d0
-!$OMP PARALLEL DO default(shared) PRIVATE(I),SCHEDULE(dynamic,CHUNK),REDUCTION(+:objval)
-  do i=1,N_data
-        objval=objval+((x(5)+x(6)*tt(i))*dcos(x(1)+x(2)*tt(i)+x(3)*tt(i)**2+x(4)*tt(i)**3)-s0(i))**2
-  end do
-!$OMP END PARALLEL DO
-  objval=dsqrt(objval/N_data)
-end subroutine FTN
 
 subroutine fftw1(t,s,f,m)
 implicit none

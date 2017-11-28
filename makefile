@@ -31,7 +31,7 @@ obj/DE_Fortran90.f90.o: obj/param.f90.o
 
 obj/math_lib.f90.o: obj/lib_array.f90.o
 
-obj/module10.f90.o: obj/lib_array.f90.o obj/math_lib.f90.o obj/param.f90.o obj/plot_module.f90.o obj/utilmod.f90.o 
+obj/module10.f90.o: obj/ftn.f90.o obj/lib_array.f90.o obj/math_lib.f90.o obj/param.f90.o obj/plot_module.f90.o obj/utilmod.f90.o 
 
 obj/phase.f90.o: obj/module10.f90.o 
 
