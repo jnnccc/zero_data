@@ -13,9 +13,9 @@ $ sudo apt-get install pgplot5
 
 ## Install and run 
 
-$ make -j24
-$ cd bin
-$ ./phase_track
++ $ make -j24
++ $ cd bin
++ $ ./phase_track
 
 ## Release notes
 
