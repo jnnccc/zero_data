@@ -1,0 +1,8 @@
+\begindata
+   KERNELS_TO_LOAD = (
+'input/naif0010.tls'
+)
+
+\begintext
+phobos fly-by: /home/jnc/work/data/mex/phobos_flyby/ORMM__131201000000_01033.BSP
+cruse:/home/jnc/work/data/mex/phobos_flyby/ORHM_______________00038.BSP
