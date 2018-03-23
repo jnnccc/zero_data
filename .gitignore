@@ -1,4 +1,4 @@
 doc
 support
 obj/*.o
-
+.jitignore
