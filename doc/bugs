@@ -1,1 +1,0 @@
-1，在处理/mnt/data1/rawdata/CAS/aux/20170719_CASSINI_2015.dat时，扫频过程中f的值会被数据读取影响，这应该是内存溢出的问题
