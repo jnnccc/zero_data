@@ -1,6 +1,6 @@
 \begindata
    KERNELS_TO_LOAD = (
-'../input/naif0010.tls'
+'input/naif0010.tls'
 )
 
 \begintext

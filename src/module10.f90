@@ -19,15 +19,16 @@ integer(kind=4)::ihealth,inorm
 integer,allocatable::datai(:),dataq(:),s0(:)
 real*8,allocatable::tt(:)
 real*8::phtemp,amptemp
-real*8,parameter:: perr=1d-10
+real*8,parameter:: perr=1d-5
 private
 public program10, utcsta,utcsto,utc1,utc2,datai,dataq!,program10
 contains
+
 subroutine program10
 implicit none
 RSR_data_PAR%DATAFILE=trim(RSR_data_PAR%DATAFILE)//C_NULL_CHAR
-open (idebug,file='log')
-CALL FURNSH ( '../input/driv.ker')
+!open (idebug,file='log')
+CALL FURNSH ( 'input/driv.ker')
 select CASE (rsr_data_PAR%mode)
 case (0)
 	call rsrinfo(RSR_data_PAR%DATAFILE)
@@ -48,13 +49,12 @@ case (2,4)
 case (3)
 	call rsrinfo(RSR_data_PAR%DATAFILE)
 	N_data=sampling*RSR_data_PAR%span2+1
-	call ftn_set_length(N_data)
 	allocate(datai(N_data),dataq(N_data))
      call data_process_3
 case default
     write(*,*) 'wrong data process mode'
 end select
-CALL UNLOAD ( '../input/driv.ker')
+CALL UNLOAD ( 'input/driv.ker')
 
 close(idebug)
 end subroutine program10
@@ -151,26 +151,33 @@ implicit none
 integer(kind=4) :: NP,dim_xc,strategy,refresh,nfeval,ii
 integer (kind=8)::i,N,itermax
 integer(kind=4), dimension(3), parameter :: method=(/0, 0, 0/)
-DOUBLE PRECISION:: xcmin(6),xcmax(6),bestmem_XC_temp(6),bestmem_XC(6),vtr,cr_xc,f_xc,f_cr,bestval
+DOUBLE PRECISION:: bestmem_XC(7),vtr,cr_xc,f_xc,f_cr,bestval
 double precision ::ET ,ET0,ET1,etemp
 CHARACTER *80:: basename
 CALL GETARG(1,basename)
 
-      np=200
-  dim_xc=6
+      np=300
+  dim_xc=7
 strategy=3  !2,3,4,5 皆可选 3的收敛速度快点,2,4,5的速度较慢
- refresh=3
+! refresh=50
      vtr=0.d0
    cr_xc=0.85d0
     f_xc=0.5d0
     f_cr=1.d0
-if (rsr_data_PAR%mode .eq. 2) then
+
+!边界初始化
+RSR_data_PAR%XCmin(1)=0.d0
+RSR_data_PAR%XCmax(1)=2.d0*pi
+
 write(ctemp,'(i1)')rsr_data_PAR%chanel
 write(ctemp0,'(i1)')RSR_data_PAR%datatype
-write(ctemp1,"(f3.1)") rsr_data_PAR%SPAN2
-open(iout,file='../output/'//trim(basename)//'_'//'ch'//ctemp(1:1)//'_'//ctemp0(1:1)//'_'//trim(ctemp1))
+write(ctemp1,"(f8.1)") rsr_data_PAR%SPAN2
+if (rsr_data_PAR%mode .eq. 2) then
+open(iout,file='output/'//trim(basename)//'_'//'ch'//ctemp(1:1)//'_'//ctemp0(1:1)//'_'//trim(ADJUSTL(adjustr(ctemp1))))
+open (idebug,file='log/'//trim(basename)//'_'//'ch'//ctemp(1:1)//'_'//ctemp0(1:1)//'_'//trim(ADJUSTL(adjustr(ctemp1)))//'.log')
 else
-open(iout,file='../output/debug.out')
+open(iout,file='output/debug.out')
+open(idebug,file='log/debug.log')
 endif
 !utcsta='2011-12-09T08:39:19.000'
 if (rsr_data_PAR%arb0time(1:1)=='1') utcsta=rsr_data_PAR%arb0time(2:24)
@@ -190,27 +197,28 @@ inorm=0
 bestmem_XC=0.d0
 CALL random_seed()
 do i=1,N
-	write(*,*)RSR_data_PAR%XCmin
-	write(*,*)RSR_data_PAR%XCmax
-	et0=etemp+RSR_data_PAR%span2*dble(i-1)
-	et1=etemp+RSR_data_PAR%span2*dble(i)
-	call ET2UTC ( et0,'ISOC', 3, utc1 )
-	call ET2UTC ( et1,'ISOC', 3, utc2 )
+call tic
+    write(*,*)RSR_data_PAR%XCmin
+    write(*,*)RSR_data_PAR%XCmax
+    et0=etemp+RSR_data_PAR%span2*dble(i-1)
+    et1=etemp+RSR_data_PAR%span2*dble(i)
+    call ET2UTC ( et0,'ISOC', 3, utc1 )
+    call ET2UTC ( et1,'ISOC', 3, utc2 )
 !     call ET2UTC ( et0,'ISOC', 3, '2011-12-09T08:37:14.000' )
 !     call ET2UTC ( et1,'ISOC', 3, '2011-12-09T08:37:16.000' )
-!	utc1=utc1(1:20)//'000'!'2011-12-09T08:37:14.000'
-!	utc2=utc2(1:20)//'000'!'2011-12-09T08:37:16.000'
-	write(*,*)utc1,utc2
-	call getrsrdata(datai,dataq,RSR_data_PAR%DATAFILE,RSR_data_PAR%chanel)
+!   utc1=utc1(1:20)//'000'!'2011-12-09T08:37:14.000'
+!   utc2=utc2(1:20)//'000'!'2011-12-09T08:37:16.000'
+    write(*,*)utc1,utc2
+    call getrsrdata(datai,dataq,RSR_data_PAR%DATAFILE,RSR_data_PAR%chanel)
 select case(RSR_data_PAR%datatype)
 case(0)
-	s0=datai
+    s0=datai
 case(1)
-	s0=dataq
+    s0=dataq
 case(2)
-	s0=datai+dataq
+    s0=datai+dataq
 case default
-	write(*,*) 'wrong data type'
+    write(*,*) 'wrong data type'
 end select
 call ftn_set_s0(s0(1))
 if (ihealth==0) then
@@ -222,56 +230,60 @@ write(idebug,*)utc1
 write(idebug,*)RSR_data_PAR%XCmin
 write(idebug,*)RSR_data_PAR%XCmax
 write(idebug,*)'--------------------'
-	if (inorm==0) then
-		itermax=500
-	else
-		itermax=RSR_data_PAR%itermax
-	endif
+    if (inorm==0) then
+        itermax=500
+    else
+        itermax=RSR_data_PAR%itermax
+    endif
 
 call DE_Fortran90(ftn_eval, Dim_XC, RSR_data_PAR%XCmin, RSR_data_PAR%XCmax, VTR, NP, itermax, F_XC,&
-                CR_XC, strategy, refresh, bestmem_XC, bestval, nfeval, F_CR, method)
-	if(	  dabs(bestmem_XC(2)-RSR_data_PAR%XCmin(2)).le.perr.or.dabs(bestmem_XC(2)-RSR_data_PAR%XCmax(2)).le.perr.or. &
-  		& dabs(bestmem_XC(3)-RSR_data_PAR%XCmin(3)).le.perr.or.dabs(bestmem_XC(3)-RSR_data_PAR%XCmax(3)).le.perr.or. &
-  		& dabs(bestmem_XC(4)-RSR_data_PAR%XCmin(4)).le.perr.or.dabs(bestmem_XC(4)-RSR_data_PAR%XCmax(4)).le.perr.or. &
-  		& dabs(bestmem_XC(5)-RSR_data_PAR%XCmin(5)).le.perr.or.dabs(bestmem_XC(5)-RSR_data_PAR%XCmax(5)).le.perr.or. &
-		& dabs(bestmem_XC(6)-RSR_data_PAR%XCmin(6)).le.perr.or.dabs(bestmem_XC(6)-RSR_data_PAR%XCmax(6)).le.perr           )then
-!		&  abs(bestmem_XC(5)-amptemp)/amptemp .gt. 2d-1	) then
+                CR_XC, strategy,RSR_data_PAR%refresh, bestmem_XC, bestval, nfeval, F_CR, method)
+    if(   dabs(bestmem_XC(2)-RSR_data_PAR%XCmin(2)).le.perr.or.dabs(bestmem_XC(2)-RSR_data_PAR%XCmax(2)).le.perr.or. &
+        & dabs(bestmem_XC(3)-RSR_data_PAR%XCmin(3)).le.perr.or.dabs(bestmem_XC(3)-RSR_data_PAR%XCmax(3)).le.perr.or. &
+        & dabs(bestmem_XC(4)-RSR_data_PAR%XCmin(4)).le.perr.or.dabs(bestmem_XC(4)-RSR_data_PAR%XCmax(4)).le.perr.or. &
+        & dabs(bestmem_XC(5)-RSR_data_PAR%XCmin(5)).le.perr.or.dabs(bestmem_XC(5)-RSR_data_PAR%XCmax(5)).le.perr.or. &
+        & dabs(bestmem_XC(7)-RSR_data_PAR%XCmin(7)).le.perr.or.dabs(bestmem_XC(7)-RSR_data_PAR%XCmax(7)).le.perr.or. &
+        & dabs(bestmem_XC(6)-RSR_data_PAR%XCmin(6)).le.perr.or.dabs(bestmem_XC(6)-RSR_data_PAR%XCmax(6)).le.perr           )then
+!       &  abs(bestmem_XC(5)-amptemp)/amptemp .gt. 2d-1 ) then
 
-		ihealth=0
-		inorm=0
-	else
-	 dtemp =bestmem_XC(2)+2.d0*bestmem_XC(3)*(-RSR_data_PAR%span2/2.d0)+3.d0*bestmem_XC(4)*(-RSR_data_PAR%span2/2.d0)**2
+        ihealth=0
+        inorm=0
+    else
+     dtemp =bestmem_XC(2)+2.d0*bestmem_XC(3)*(-RSR_data_PAR%span2/2.d0)+3.d0*bestmem_XC(4)*(-RSR_data_PAR%span2/2.d0)**2
      dtemp1=bestmem_XC(2)+2.d0*bestmem_XC(3)*( RSR_data_PAR%span2/2.d0)+3.d0*bestmem_XC(4)*( RSR_data_PAR%span2/2.d0)**2
 
-		RSR_data_PAR%XCmin(2)=bestmem_XC(2)+(dtemp1-dtemp)-100.d0
-		RSR_data_PAR%XCmax(2)=bestmem_XC(2)+(dtemp1-dtemp)+100.d0
-     	RSR_data_PAR%XCmin(3)=bestmem_XC(3)-5.d0
-     	RSR_data_PAR%XCmax(3)=bestmem_XC(3)+5.d0
-		if (inorm==0) then
-     	RSR_data_PAR%XCmin(5)=bestmem_XC(5)-500.d0
-     	RSR_data_PAR%XCmax(5)=bestmem_XC(5)+500.d0
-		if (RSR_data_PAR%XCmin(5)<0.d0) RSR_data_PAR%XCmin(5)=0.d0
-		else
+        RSR_data_PAR%XCmin(2)=bestmem_XC(2)+(dtemp1-dtemp)-20.d0
+        RSR_data_PAR%XCmax(2)=bestmem_XC(2)+(dtemp1-dtemp)+20.d0
+        RSR_data_PAR%XCmin(3)=bestmem_XC(3)-5.d0
+        RSR_data_PAR%XCmax(3)=bestmem_XC(3)+5.d0
+        if (inorm==0) then
+        RSR_data_PAR%XCmin(5)=bestmem_XC(5)-500.d0
+        RSR_data_PAR%XCmax(5)=bestmem_XC(5)+500.d0
+        if (RSR_data_PAR%XCmin(5)<0.d0) RSR_data_PAR%XCmin(5)=0.d0
+        else
           RSR_data_PAR%XCmin(5)=bestmem_XC(5)-200.d0
           RSR_data_PAR%XCmax(5)=bestmem_XC(5)+200.d0
-		if (RSR_data_PAR%XCmin(5)<0.d0) RSR_data_PAR%XCmin(5)=0.d0
-		endif
-		
-		inorm=1
-	endif
+        if (RSR_data_PAR%XCmin(5)<0.d0) RSR_data_PAR%XCmin(5)=0.d0
+        endif
+
+        inorm=1
+    endif
 call reout(iout,bestmem_XC,bestval,ihealth)
 !bestmem_XC_temp=bestmem_XC
 !amptemp=bestmem_XC(5)
 else
 !continue
 call reout(iout,bestmem_XC,bestval,ihealth)
-!write(*,*)bestmem_XC,bestval,ihealth
-!write(*,*)'------------------------------------'
 endif
+if (inorm .eq. 1) then
+    call toc1
+endif
+
 
 enddo
 
 close(30)
+
 end subroutine data_process_2
 
 
@@ -300,6 +312,7 @@ sp=rsr_data_PAR%span1
 !f1=sampling/2.d0
 !itemp=floor((f1-f0)/2.d0)
 n_block=int(rsr_data_PAR%span2/rsr_data_PAR%span1)
+if (n_block .gt. 50) n_block=50
 write(*,*)n_block
 allocate(frq(n_block),amp(n_block),res(n_block))
 itemp1=sp*sampling
@@ -379,7 +392,7 @@ end subroutine check_Data
 subroutine reout(iwrite,bestmem_XC,bestval,ihealth)
 implicit none
 integer(kind=4):: iwrite,ihealth
-real*8:: delta_phi,phi_l,phi_r,bestmem_XC(6),bestval,fre_l,fre_r,et
+real*8:: delta_phi,phi_l,phi_r,bestmem_XC(7),bestval,fre_l,fre_r,et
 delta_phi=bestmem_XC(2)*RSR_data_PAR%span2+(bestmem_XC(4)*RSR_data_PAR%span2**3)/4.d0
 phi_l=modulo(bestmem_XC(1)+bestmem_XC(2)*(-RSR_data_PAR%span2/2.d0)+bestmem_XC(3)*(-RSR_data_PAR%span2/2.d0)**2+bestmem_XC(4)*(-RSR_data_PAR%span2/2.d0)**3,2.d0*pi)
 phi_r=modulo(bestmem_XC(1)+bestmem_XC(2)*( RSR_data_PAR%span2/2.d0)+bestmem_XC(3)*( RSR_data_PAR%span2/2.d0)**2+bestmem_XC(4)*( RSR_data_PAR%span2/2.d0)**3,2.d0*pi)
@@ -391,9 +404,10 @@ write(iwrite,118)utc1(1:23),phi_l,fre_l
 write(iwrite,119)ctemp(1:23),bestmem_XC,delta_phi,bestval,ihealth
 write(iwrite,118)utc2(1:23),phi_r,fre_r
 118 FORMAT(A23,f8.3, f13.3)
-119 FORMAT(A23,f8.3, f13.3,f10.3,f9.3,f10.1,f10.1,f20.6,f15.3,i5)
+119 FORMAT(A23,f8.3, f13.3,f14.6,E16.6,f10.1,f7.1,E16.6,f20.6,f15.3,i5)
 !120 FORMAT(A21,f8.3, f13.3)
 end subroutine reout
+
 
 subroutine fftw1(t,s,f,m)
 implicit none

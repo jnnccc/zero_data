@@ -2,6 +2,7 @@ DEBUG =
 
 ifeq (,$(DEBUG))
 CXXFLAGS = -std=c++11 -g -O3 -ffast-math -fopenmp -fdata-sections -ffunction-sections
+CXXFLAGS = -D_FILE_OFFSET_BITS=64 -D_LARGE_FILE
 F90FLAGS = -g -O3 -ffast-math -fopenmp -Jobj/ -ffree-line-length-none -fdata-sections -ffunction-sections
 FCFLAGS = -g -O3 -ffast-math -Iinclude/ -fdata-sections -ffunction-sections
 LDFLAGS = -Xcompiler=-fopenmp -Xlinker=--gc-sections

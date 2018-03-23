@@ -22,6 +22,13 @@ subroutine toc
   write(*,*) toctime-tictime
 endsubroutine
 
+subroutine toc1
+  integer(8) C,R,M
+    CALL SYSTEM_CLOCK (COUNT=C, COUNT_RATE=R, COUNT_MAX=M)
+    toctime = dble(C)/dble(R)
+  write(idebug,*) "one block use : ",toctime-tictime," seconds"
+endsubroutine
+
 
 subroutine combtime(mjd,sec,mjdd)
 integer,intent(in):: mjd
@@ -136,27 +143,6 @@ ctemp='jd '//ctemp
 CALL STR2ET ( ctemp, ET )
 write(*,*)et
 endsubroutine mjd2et
-
-subroutine ptmate(a)
-implicit none
-real*8 a(:,:)
-integer i,j,m,n
-m=size(a(:,1))
-n=size(a(1,:))
-do i=1,m
-     write(*,'(e11.3)')(a(i,j), j=1,n)
-enddo
-endsubroutine
-subroutine ptmatf(a)
-implicit none
-real*8 a(:,:)
-integer i,j,m,n
-m=size(a(:,1))
-n=size(a(1,:))
-do i=1,m
-     write(*,'(f8.3)')(a(i,j), j=1,n)
-enddo
-endsubroutine
 
 
 

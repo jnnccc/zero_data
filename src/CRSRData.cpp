@@ -24,24 +24,28 @@ Cdata_erro含义：1－
 Author：lm
 Date:2012-07-27
 
+Revise at Data: 2018-3-12
+Author：ZTY
+修改格式为SEU-RSR-1G数据格式
+Revise at Data: 2018-3-14
+Author：ZTY
+64位操作系统下, long int 位数变了，相应的修改数据类型
 ************************************************************************************************/
 //#define _LARGEFILE_SOURCE
 //#define _LARGEFILE64_SOURCE
 #define _FILE_OFFSET_BITS 64
-#include<iostream>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <math.h>
+
+#include <unistd.h>
+
 #include "CRSRData.h"
-using namespace std;
+
 CRSRDATA:: CRSRDATA(char *Cdata_filename)
 {
 	Data_info.Cdata_Rate = 0;
 	Data_info.Cdata_Bit = 0;
 //	memset(Data_info.Cdata_NCO,0,sizeof((int)*4));
 	Data_info.Interval = 0;
-	Data_info.blkpt = 0.000;
+	Data_info.blkpt = 0;
 //	memset(Data_info.StartUTC,0,sizeof((char)*24));
 //	memset(Data_info.StopUTC,0,sizeof((char)*24));
 //	memset(Data_info.CurrentUTC,0,sizeof((char)*24));
@@ -49,8 +53,6 @@ CRSRDATA:: CRSRDATA(char *Cdata_filename)
 	Data_start = 0;
 	Cdatafp_Position = 0;
 	Chg_file = 0;
-//	memset(Head_words,0,sizeof((char)*16));
-//	memset(Tail_words,0,sizeof((unsigned long int)*24));
 	This_residue.Last_ReadNum = 0;
 	This_residue.Last_Remaind = 0;
 	ms_time = 0;
@@ -67,21 +69,15 @@ int CRSRDATA::Cdata_open(char *Cdata_filename)
 {
 	char f_file[100];
 	int Count = 0;
-//	char H_buffer[16];
-//	char D_buffer[32000];
-//	U32 T_buffer[188];
 	FILE *f_fp;
 
 	strcpy(f_file,Cdata_filename);
-//	printf("test\n");
 	if(NULL==(f_fp = fopen(f_file,"rb")))
-//	if(!(f_fp =fopen(f_file,"rb")))
 	{
 		printf("cannot open file:%s\n",f_file);
 		return(0);
 		exit(1);
 	}
-//	printf("test\n");
 
 	while(Count<6)
 	{
@@ -94,12 +90,11 @@ int CRSRDATA::Cdata_open(char *Cdata_filename)
 	fseeko(f_fp,32000,1);
 	fread(Tail_words,4,188,f_fp);
 	get_RateBit();
-//	get_Rate();
-//	get_Bit();
 	get_NCO(1);
 	get_NCO(2);
 	get_NCO(3);
 	get_NCO(4);
+
 	getPPSTime();
 	if(0==Find_PPS(f_fp))  exit(1);
 	Cdata_fp = f_fp;
@@ -109,7 +104,7 @@ int CRSRDATA::Cdata_open(char *Cdata_filename)
 	fseeko(f_fp,32016,1);
 	fread(Tail_words,4,188,f_fp);
 	getStartUTC();
-	fseeko(f_fp,-752,2);
+	fseeko(f_fp,-752,2);	//skip to end of the file
 	fread(Tail_words,4,188,f_fp);
 	getStopUTC();
 //	fclose(f_fp);
@@ -126,7 +121,7 @@ int CRSRDATA::Cdata_close()
 	}
 	else 
 	{
-//		printf("File closed~\n");
+		printf("File closed~\n");
 		return(1);
 	}
 }
@@ -136,19 +131,21 @@ int CRSRDATA::get_RateBit()
 {
 	unsigned int rate_bit;
 	int rate_ind,bit_ind;
-//	unsigned int rate_array[10] = {160000,16000,50000,100000,200000,2000000,4000000,8000000,16000000,32000000};
-	unsigned int rate_array[10] = {1000000,10000,50000,100000,200000,2000000,4000000,8000000,16000000,32000};
+	unsigned int rate_array[10] = {1000000,0,0,0,200000,2000000,4000000,8000000,16000000,0};
 	int bit_array[5] = {16,8,4,2,1};
 	rate_bit = Tail_words[3];
-
-	rate_ind = rate_bit/256;
-	bit_ind = rate_bit%256;
+	rate_ind = (rate_bit&0x0000FFFF)/256;
+	bit_ind = (rate_bit&0x0000FFFF)%256;
 	if(-1<=rate_ind&&rate_ind<10&&-1<bit_ind&&bit_ind<5)
 	{
 		Data_info.Cdata_Rate = rate_array[rate_ind];
 		Data_info.Cdata_Bit = bit_array[bit_ind];
-		Data_info.Interval = 32e6/(Data_info.Cdata_Rate*Data_info.Cdata_Bit);
-		Data_info.blkpt = 1000.000/Data_info.Interval;
+		printf("Rate: %d, Bit: %d\n",Data_info.Cdata_Rate,Data_info.Cdata_Bit);
+		rate_bit = (unsigned int)(Data_info.Cdata_Rate*Data_info.Cdata_Bit);
+		//printf("Rate*Bit: %ld\n",rate_bit);
+		Data_info.Interval = (unsigned int)32000000/rate_bit;
+		Data_info.blkpt = 1000/Data_info.Interval;
+		printf("Interval: %d, blkpt: %d\n",Data_info.Interval,Data_info.blkpt);
 		return(1);
 	}
 	else
@@ -158,63 +155,53 @@ int CRSRDATA::get_RateBit()
 	}
 }
 
-/*int CRSRDATA::get_Rate();
-{
-	int Rate_ind;
-	int rate_array[10] = {16e4,16e3,50e3,1e5,2e5,2e6,4e6,8e6,16e6,32e3};
-	rate_bit = Tail_words[4];
-
-	rate_ind = floor(rate_bit/256);
-	Cdata_Rate = rate_array[rate_ind];
-}
-
-int CRSRDATA:get_Bit();
-{
-	int rate_bit;
-	int bit_array[5] = {16,8,4,2,1};
-	rate_bit = Tail_words[4];
-
-	bit_ind = rate_bit%256;
-	Cdata_Bit = bit_array[bit_ind];
-}*/
-
 void CRSRDATA::get_NCO(int Ch_No)
 {
-	int nco_hs,nco_ls;
-
-	nco_hs = Tail_words[Ch_No+6]*1e6;
-	nco_ls = Tail_words[Ch_No+14];
-	Data_info.Cdata_NCO[Ch_No-1] = nco_hs+nco_ls; //search for 1000ms
+	//int nco_hs,nco_ls;	//2018-3-12 change from HS&LS to NCO1 2 3
+	unsigned int nco_1st,nco_2nd,nco_3rd;
+	//2018-3-12 change from HS&LS to NCO1 2 3
+	//printf("Tail_words[%d] = %lx",(Ch_No-1)%2+10,Tail_words[(Ch_No-1)%2+10]);
+	//printf("Tail_words[%d] = %lx",Ch_No+11,Tail_words[Ch_No+11]);
+	//printf("Tail_words[%d] = %lx",Ch_No+15,Tail_words[Ch_No+15]);
+	nco_1st = (Tail_words[(Ch_No-1)%2+10]&0x0000FFFF);	//only low 16bit valid
+	nco_2nd = (Tail_words[Ch_No+11]&0x0000FFFF);				//only low 16bit valid
+	nco_3rd = (Tail_words[Ch_No+15]&0x0000FFFF);				//only low 16bit valid
+	//printf("NCO1=%ld NCO2=%ld NCO3=%ld\n",nco_1st,nco_2nd,nco_3rd);
+	Data_info.Cdata_NCO[Ch_No-1] = (unsigned int)nco_1st*1e6+(unsigned int)nco_2nd*1e6+(unsigned int)nco_3rd*1e3;
+	printf("NCO ch %d freq=%d\n",Ch_No,Data_info.Cdata_NCO[Ch_No-1]);
 }
 
 
 void CRSRDATA::getPPSTime()
 {
 	unsigned int date1,date2;
-	date1 = Tail_words[1];
-	date2 = Tail_words[2];
-	PPS_time.msecond = 0;
+	unsigned int year1,year2;
+	date1 = Tail_words[1];	//in SEU-RSR-1G, data1 include sec,Min,Hour
+	date2 = Tail_words[2];	//in SEU-RSR-1G, data2 include day,month,year
+	
+	PPS_time.msecond = 0;	//ZTY why 0?
+	//printf("date1 %lx date2 %lx\n",date1,date2);
+	/* SEU-RSR-256
 	PPS_time.second = date1/16777216;
 	PPS_time.minute = (date1%16777216)/65536;
 	PPS_time.hour = (date1%65536)/256;
 	PPS_time.day = date1%256;
 	PPS_time.month = date2/16777216+1;
 	PPS_time.year = (date2%16777216)/65536*100+(date2%65536)/256;
-//     PPS_time.day = date1/16777216;
-//     PPS_time.hour = (date1%16777216)/65536;
-//     PPS_time.minute = (date1%65536)/256;
-//     PPS_time.second = date1%256;
-//     PPS_time.month = date2%256+1;
-//     PPS_time.year = (date2%16777216)/65536*100+(date2%65536)/256;
-//     cout<<"year"<<PPS_time.year<<endl;
-//     cout<<"mon"<<PPS_time.month<<endl;
-//     cout<<"day"<<PPS_time.day<<endl;
-//     cout<<"hour"<<PPS_time.hour<<endl;
-//     cout<<"minute"<<PPS_time.minute<<endl;
-//     cout<<"second"<<PPS_time.second<<endl;
-
+	*/
+	// SEU-RSR-1G begin
+	PPS_time.second = (unsigned int)(date1&0x000000FF);
+	PPS_time.minute = (unsigned int)((date1>>8)&0x000000FF);
+	PPS_time.hour = (unsigned int)((date1>>16)&0x000000FF);
+	PPS_time.day = (unsigned int)(date2&0x000000FF);
+	PPS_time.month = (unsigned int)((date2>>8)&0x000000FF);
+	year1 = (date2>>16)&0x000000FF;
+	year2 = (date2>>24)&0x000000FF;
+	//printf("year1 = %lx year2 = %lx\n",year1,year2);
+	PPS_time.year = (unsigned int)((year2<<8)+year1);
+	// SEU-RSR-1G end
+	//printf("PPS time:(UTC)%04d-%02d-%02dT%02d:%02d:%02d\n",PPS_time.year,PPS_time.month,PPS_time.day,PPS_time.hour,PPS_time.minute,PPS_time.second);
 }
-
 
 int CRSRDATA::getStartUTC()
 {
@@ -265,7 +252,7 @@ int CRSRDATA::getStartUTC()
 	Start_time.minute = min_cnt;
 	Start_time.second = sec_cnt;
 	Start_time.msecond = tot_s_cnt;
-//	printf("Data start time:(UTC)%04d-%02d-%02dT%02d:%02d:%02d.%03d\n",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
+	printf("Data start time:(UTC)%04d-%02d-%02dT%02d:%02d:%02d.%03d\n",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
 	sprintf(Data_info.StartUTC,"%04d-%02d-%02dT%02d:%02d:%02d.%03d",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
 	Data_info.StartUTC[23] = '\0';
 	return(1);
@@ -320,7 +307,7 @@ int CRSRDATA::getStopUTC()
 	Stop_time.minute = min_cnt;
 	Stop_time.second = sec_cnt;
 	Stop_time.msecond = tot_s_cnt;
-//	printf("Data stop time:(UTC)%04d-%02d-%02dT%02d:%02d:%02d.%03d\n",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
+	printf("Data stop time:(UTC)%04d-%02d-%02dT%02d:%02d:%02d.%03d\n",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
 	sprintf(Data_info.StopUTC,"%04d-%02d-%02dT%02d:%02d:%02d.%03d",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
 	Data_info.StopUTC[23] = '\0';
 	return(1);
@@ -328,6 +315,7 @@ int CRSRDATA::getStopUTC()
 
 int CRSRDATA::get_UTC()
 {
+	//printf("get_UTC Line 317\n");
 	get_mstime();
 	unsigned int tot_s;
 	int tot_s_cnt,sec_cnt,min_cnt,hr_cnt,day_cnt,mon_cnt,year_cnt;
@@ -369,7 +357,7 @@ int CRSRDATA::get_UTC()
 			mon_cnt = 1;
 		}
 	}
-//	printf("Data current time:(UTC)%04d-%02d-%02dT%02d:%02d:%02d.%03d\n",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
+	printf("Data current time:(UTC)%04d-%02d-%02dT%02d:%02d:%02d.%03d\n",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
 	sprintf(Data_info.CurrentUTC,"%04d-%02d-%02dT%02d:%02d:%02d.%03d",year_cnt,mon_cnt,day_cnt,hr_cnt,min_cnt,sec_cnt,tot_s_cnt);
 	Data_info.CurrentUTC[23] = '\0';
 //	printf("Current position:%ld\n",Cdatafp_Position);
@@ -382,7 +370,7 @@ void CRSRDATA::get_mstime()
 	ms_time = Tail_words[0];
 }
 
-int CRSRDATA::Find_PPS(FILE *f_fp)  //search for 1000ms
+int CRSRDATA::Find_PPS(FILE *f_fp)  //search for msecond=N*1000ms
 {
 	int Second_flag = 1;
 	int Count = 0;
@@ -421,6 +409,7 @@ void CRSRDATA::Cdata_perro()
 
 int CRSRDATA::Cdata_read(char *Start_UTC,char *Stop_UTC,int Ch_No,int *pIData,int *pQData)
 {
+	printf("Read Mode 1\n");
 	if(Ch_No<1||Ch_No>4)
 	{
 		printf("Illegal channel number\n");
@@ -436,7 +425,8 @@ int CRSRDATA::Cdata_read(char *Start_UTC,char *Stop_UTC,int Ch_No,int *pIData,in
 		printf("Stop UTC beyond the range\n");
 		exit(1);
 	}
-
+	
+	//printf("Read Mode 1 Line 427\n");
 	int tm_year[2],tm_mon[2],tm_day[2],tm_hr[2],tm_min[2],tm_s[2],tm_ms[2],tm_skip,BlkNum;
 	float blk_skip,RemNum;
 	sscanf(Start_UTC,"%4d-%2d-%2dT%2d:%2d:%2d.%3d",&tm_year[0],&tm_mon[0],&tm_day[0],&tm_hr[0],&tm_min[0],&tm_s[0],&tm_ms[0]);
@@ -446,7 +436,8 @@ int CRSRDATA::Cdata_read(char *Start_UTC,char *Stop_UTC,int Ch_No,int *pIData,in
 	blk_skip = tm_skip*Data_info.blkpt/1000;
 	BlkNum = int(blk_skip);
 	RemNum = (blk_skip-BlkNum)*32000/Data_info.Cdata_Bit;
-
+	
+	//printf("Read Mode 1 Line 437\n");
 //	fseeko(Cdata_fp,(Data_start+32768*BlkNum),0);  //跳过整数包
 	double st= Data_start+32768.00*BlkNum;
 //	printf("sizeof(off_t):%d,st:%f\n",sizeof(off_t),st/32768.00);
@@ -454,6 +445,7 @@ int CRSRDATA::Cdata_read(char *Start_UTC,char *Stop_UTC,int Ch_No,int *pIData,in
 	Cdatafp_Position = ftello(Cdata_fp)/32768;
 //	printf( "Skip %ld(%ld) packages ,start from %ld\n",Cdatafp_Position,BlkNum,Data_start/32768);
 	
+	//printf("Read Mode 1 Line 444\n");
 	sscanf(Stop_UTC,"%4d-%2d-%2dT%2d:%2d:%2d.%3d",&tm_year[1],&tm_mon[1],&tm_day[1],&tm_hr[1],&tm_min[1],&tm_s[1],&tm_ms[1]);
 	if(tm_mon[1]-tm_mon[0]==1) tm_day[1] = tm_day[0]+1;
 	if(tm_day[1]-tm_day[0]==1)  tm_hr[1] +=24; 
@@ -462,17 +454,19 @@ int CRSRDATA::Cdata_read(char *Start_UTC,char *Stop_UTC,int Ch_No,int *pIData,in
 	BlkNum = int(blk_skip);
 	This_residue.Last_ReadNum = (blk_skip-BlkNum)*32000/Data_info.Cdata_Bit;
 	
-
+	//printf("Read Mode 1 Line 455\n");
 	tm_skip = RemNum; //再次利用tm_skip，以跳过RemNum
 	int Length = BlkNum*32000/Data_info.Cdata_Bit-RemNum+This_residue.Last_ReadNum;
 	int *LpIData = pIData;
 	int *LpQData = pQData;
+	//printf("Read Mode 1 Line 460\n");
 	return(Read_dat(tm_skip,BlkNum,Ch_No,pIData,pQData,Length,RemNum));
 }
 
 
 int CRSRDATA::Cdata_read(char *Start_UTC,int Length,int Ch_No,int *pIData,int *pQData)
 {
+	printf("Read Mode 2\n");
 	if(Ch_No<1||Ch_No>4)
 	{
 		printf("Illegal channel number\n");
@@ -495,7 +489,6 @@ int CRSRDATA::Cdata_read(char *Start_UTC,int Length,int Ch_No,int *pIData,int *p
 	BlkNum = int(blk_skip);
 	RemNum = (blk_skip-BlkNum)*32000/Data_info.Cdata_Bit;
 
-//	fseeko(Cdata_fp,(Data_start+32768L*(long)BlkNum),0);  //跳过整数包
 	double st=Data_start+32768.00*BlkNum;
 	fseeko(Cdata_fp,st,0);  //跳过整数包
 	Cdatafp_Position = ftello(Cdata_fp)/32768;
@@ -513,6 +506,7 @@ int CRSRDATA::Cdata_read(char *Start_UTC,int Length,int Ch_No,int *pIData,int *p
 
 int CRSRDATA::Cdata_read(int Length,int Ch_No,int *pIData,int *pQData)
 {
+	printf("Read Mode 3\n");
 	if(Chg_file)
 	{
 		printf("Here is the end of file\n");
@@ -677,16 +671,18 @@ int CRSRDATA::Cdata_read(int Length,int Ch_No,int *pIData,int *pQData)
 
 	tm_skip = 0;
 	int *LpIData = pIData;
-	int *LpQData = pQData;
+	int *LpQData = pQData;	
 	return(Read_dat(tm_skip,BlkNum,Ch_No,pIData,pQData,Length,RemNum));
 }
 
 
 int CRSRDATA::Read_dat(int tm_skip,int BlkNum,int Ch_No,int *pIData,int *pQData,int Length,int RemNum)
 {
+	//printf("Read_dat Line 680\n");
 	int blkcount = 0;
 	while(blkcount<BlkNum)
 	{
+		//printf("BlkNum=%d, Length = %d\n",BlkNum,Length);
 		int F_end = 0;
 		int read_error = 0;
 		int chnum = Ch_No-1;
@@ -775,6 +771,7 @@ int CRSRDATA::Read_dat(int tm_skip,int BlkNum,int Ch_No,int *pIData,int *pQData,
 				}
 			case 8:
 				{
+					//printf("Read_dat Line 772\n");
 					char dat_tmp[32000];
 					memset(dat_tmp,0,32000*sizeof(char));
 					read_error = fread(dat_tmp,1,32000,Cdata_fp);
@@ -786,11 +783,12 @@ int CRSRDATA::Read_dat(int tm_skip,int BlkNum,int Ch_No,int *pIData,int *pQData,
 						read_error = fread(dat_tmp,1,32000,Cdata_fp);
 					}
 					chnum *= 2;
-					for(i=tm_skip;i<4000;i++)
+					for(i=tm_skip;i<4000;i++)	//32000/(2*4)=4000 samples for each channel
 					{
 						*(pIData+i-tm_skip) = dat_tmp[i*8+chnum];
 						*(pQData+i-tm_skip) = dat_tmp[i*8+chnum+1];
 					}
+					//printf("Read_dat Line 790\n");
 					pIData += 4000-tm_skip;
 					pQData += 4000-tm_skip;
 					tm_skip = 0;
@@ -823,23 +821,29 @@ int CRSRDATA::Read_dat(int tm_skip,int BlkNum,int Ch_No,int *pIData,int *pQData,
 				printf("Illegal data format: Bit Error\n");
 				return(-1);
 		}
+		//printf("Read_dat Line 823\n");
 		fread(Tail_words,4,188,Cdata_fp);
 		Cdatafp_Position = ftello(Cdata_fp)/32768;
 		do
 		{
+			//printf("Read_dat Line 828\n");
 			if(1!=fread(&i,1,1,Cdata_fp))
 			{
-				sleep(2000);
+				sleep(1);
+				//printf("F_end = %d\n",F_end);
 				F_end ++;
 			}
 			else
 			{
+				//printf("Read_dat Line 837\n");
 				fseeko(Cdata_fp,-1,1);
 				F_end = 0;
 				break;
 			}
 		}while(feof(Cdata_fp)!=0&&F_end<10);
 		blkcount ++;
+		//printf("blkcount = %d\n", blkcount);
+		//printf("Read_dat Line 843\n");
 		Length = blkcount*32000/Data_info.Cdata_Bit-RemNum;  //此时还没有读入小数包部分顾暂时不加This_residue.Last_ReadNum
 		if(F_end==10) 
 		{
@@ -849,10 +853,11 @@ int CRSRDATA::Read_dat(int tm_skip,int BlkNum,int Ch_No,int *pIData,int *pQData,
 		}
 	}
 
-
+	//printf("Read_dat Line 849\n");
 
 	if(blkcount==BlkNum&&This_residue.Last_ReadNum!=0&&!Chg_file)
 	{
+		//printf("Read_dat Line 852\n");
 		int F_end = 0;
 		int read_error = 0;
 		int chnum = Ch_No-1;
@@ -934,6 +939,7 @@ int CRSRDATA::Read_dat(int tm_skip,int BlkNum,int Ch_No,int *pIData,int *pQData,
 				}
 			case 8:
 				{
+					//printf("Read_dat Line 934\n");
 					char dat_tmp[32000];
 					memset(dat_tmp,0,32000*sizeof(char));
 					read_error = fread(dat_tmp,1,tm_skip*8,Cdata_fp);
@@ -978,14 +984,16 @@ int CRSRDATA::Read_dat(int tm_skip,int BlkNum,int Ch_No,int *pIData,int *pQData,
 				printf("Illegal data format: Bit Error\n");
 				return(-1);
 		}
+		//printf("Read_dat Line 979\n");
 		This_residue.Last_Remaind = 32000/Data_info.Cdata_Bit-This_residue.Last_ReadNum;
 		Cdatafp_Position = ftello(Cdata_fp)/32768;
 		Length = blkcount*32000/Data_info.Cdata_Bit-RemNum+This_residue.Last_ReadNum;//此时已读入小数部分
 	}
-
+	//printf("Read_dat Line 984\n");
 	Cdatafp_Position = ftello(Cdata_fp)/32768;
 //	printf( "Read %d packages ,start from %ld\n",Cdatafp_Position,Data_start/32768);
 	get_UTC();
 
 	return(Length);
 }
+

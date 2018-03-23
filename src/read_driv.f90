@@ -11,7 +11,7 @@ IMPLICIT NONE
 integer i
 !CHARACTER*100 FRAME, ABCORR,KER,out_file, ntarget, obsrvr, utc0,utc1
 !character*50 temp
-OPEN(driv_id,FILE='../input/driv',STATUS='unknown')
+OPEN(driv_id,FILE='input/driv',STATUS='unknown')
     do i=1,driv_length
         READ(driv_id,*)ctemp
         if (ctemp(1:11).eq.'$DOPPLERL0') goto 991
@@ -23,15 +23,17 @@ OPEN(driv_id,FILE='../input/driv',STATUS='unknown')
      READ(driv_id,*)rsr_data_PAR%arb0time
      READ(driv_id,*)rsr_data_PAR%arb1time
      READ(driv_id,*)ctemp(1:2)
-    	READ(driv_id,*)rsr_data_PAR%SPAN1 
+   	READ(driv_id,*)rsr_data_PAR%SPAN1 
 	READ(driv_id,*)rsr_data_PAR%amp_win
 	READ(driv_id,*)ctemp(1:2)
      READ(driv_id,*)rsr_data_PAR%SPAN2
 	READ(driv_id,*)rsr_data_PAR%itermax
-	READ(driv_id,*)rsr_data_PAR%xcmin
-	READ(driv_id,*)rsr_data_PAR%xcmax
+	READ(driv_id,*)rsr_data_PAR%refresh
+	READ(driv_id,*)rsr_data_PAR%xcmin(3),rsr_data_PAR%xcmin(4),rsr_data_PAR%xcmin(7),rsr_data_PAR%xcmin(6)
+	READ(driv_id,*)rsr_data_PAR%xcmax(3),rsr_data_PAR%xcmax(4),rsr_data_PAR%xcmax(7),rsr_data_PAR%xcmax(6)
+
     	rewind(driv_id)
-    	write(*,*)rsr_data_PAR
+!    	write(*,*)rsr_data_PAR
 	
 !CALL FURNSH ( global_par%ker )
 !write(*,*)global_par%ker

@@ -31,13 +31,13 @@ struct ScaleTransform
 
 struct LinearTransform
 {
-	const double c0, c1, c2, c3, c4, c5;
+	const double c0, c1, c2, c3, c4, c5, c6;
 	
 	LinearTransform(
 		const double& c0_, const double& c1_, const double& c2_,
-		const double& c3_, const double& c4_, const double& c5_) :
+		const double& c3_, const double& c4_, const double& c5_, const double& c6_) :
 	
-	c0(c0_), c1(c1_), c2(c2_), c3(c3_), c4(c4_), c5(c5_) { }
+	c0(c0_), c1(c1_), c2(c2_), c3(c3_), c4(c4_), c5(c5_), c6(c6_) { }
 
 	__attribute__((always_inline))
 	__host__ __device__
@@ -54,8 +54,10 @@ struct LinearTransform
 		// t^3序列
 		double t3 = t2 * t;
 
+                double t4 = t3 * t;
+
 		// 线性操作1 & 线性操作2 & 线性操作3
-		double c = c0 + c1 * t + c2 * t2 + c3 * t3;
+		double c = c0 + c1 * t + c2 * t2 + c3 * t3 + c6 * t4;
 
 		// 三角函数
 		double s0 = cos(c);
@@ -157,7 +159,7 @@ extern "C" void ftn_set_s0(int* s0_)
 
 extern "C" void ftn_eval(const double* x, double* result_)
 {
-	clock_t t1 = clock();
+//	clock_t t1 = clock();
 
 	if (!ftn::length)
 	{
@@ -184,7 +186,7 @@ extern "C" void ftn_eval(const double* x, double* result_)
 		for (long long i = 0; i < ftn::length; i++)
 		{
 			const double t = ftn::tt[i];
-			double val = ((x[4] + x[5] * t) * cos(x[0] + x[1] * t + x[2] * t * t + x[3] * t * t * t) - ftn::s0[i]);
+			double val = ((x[4] + x[5] * t) * cos(x[0] + x[1] * t + x[2] * t * t + x[3] * t * t * t + x[6] * t * t * t * t) - ftn::s0[i]);
 			result += val * val;
 		}
 	}
@@ -193,14 +195,14 @@ extern "C" void ftn_eval(const double* x, double* result_)
 		result = thrust::transform_reduce(thrust::cuda::par(ftn::scratchSpace),
 			thrust::make_zip_iterator(thrust::make_tuple(ftn::d_tt, ftn::d_s0)),
 			thrust::make_zip_iterator(thrust::make_tuple(ftn::d_tt + ftn::length, ftn::d_s0 + ftn::length)),
-			LinearTransform(x[0], x[1], x[2], x[3], x[4], x[5]), 0.0, thrust::plus<double>());
+			LinearTransform(x[0], x[1], x[2], x[3], x[4], x[5], x[6]), 0.0, thrust::plus<double>());
 		CUDA_ERR_CHECK(cudaDeviceSynchronize());
 	}
 
 	result = sqrt(result / ftn::length);
 	*result_ = result;
 
-	clock_t t2 = clock();
+//	clock_t t2 = clock();
 
 #if 0
 	printf("平方 + 求和 (linear opration + reducion) : %f ms\n",

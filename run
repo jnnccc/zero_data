@@ -1,0 +1,5 @@
+#! /bin/bash
+#export OMP_NUM_THREADS=20
+name=`sed -n '3p' input/driv|awk '{print $1}'`
+mission=`basename $name|awk -F "." '{print $1}'`
+bin/phase_track $mission

@@ -1,6 +1,9 @@
 # Data fitting Doppler data processor with OpenMP and CUDA GPU backends
 
-微分演化算法 : http://www1.icsi.berkeley.edu/~storn/code.html#csou
+kernel algrithm : http://www1.icsi.berkeley.edu/~storn/code.html#csou
+
+## Author
+Nianchuan Jian and Dmitry Mikushin
 
 ## Prerequisites
 
@@ -8,7 +11,7 @@
 $ sudo apt-get install pgplot5
 ```
 
-## 安装说明
+## Install and run 
 
 $ make -j24
 $ cd bin

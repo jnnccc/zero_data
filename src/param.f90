@@ -106,10 +106,10 @@ END TYPE OCC_LEVEL021_PAR
 TYPE RSR_data1_PAR
 CHARACTER*80:: DATAFILE
 character(len=24)::arb0time,arb1time
-INTEGER::mode,chanel
+INTEGER::mode,chanel,refresh
 real::amp_win,span1,span2
 integer*4::datatype,itermax
-real*8::xcmin(6),xcmax(6) 
+real*8::xcmin(7),xcmax(7) !c2,c3,幅度斜率项 
 END TYPE RSR_data1_PAR
 
 TYPE PRO141_PAR

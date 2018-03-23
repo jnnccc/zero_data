@@ -1,26 +1,29 @@
 $DOPPLERL0
-4             							                                             run mode
-'../data/VEX_X12_09_1637.dat'                        	             data file
-2                                                                                    channel
+4             							                                             data mode
+'data/20180305-0848-MEX-MRO.dat'                                     	             data file
+1                                                                                    channel
 2                                                                                    data type
-12011-12-09T08:45:54.000                                                            arbitrary start time
+02015-07-15T12:54:15.000
 02017-06-10T09:37:39.000                                                             arbitrary stop  time
 -------------------------------------------------------------------------------------below is frequency tracking
-0.05 					        					                                 spectrum integration span
+0.1  					        					                fft span
 800.						                                     			             amplitude window	
 -------------------------------------------------------------------------------------below is frequency compute
-1.0                                                                                   phase integration span
-200                                                                                  iteration max  number	
- 0.            360947.0    -1000.0       -100.        10.0     -500.                    parameter low bunder
- 6.2831852     380947.0     1000.0        100.      5000.0      500.                    parameter up  bunder
+32.0                                                                                   phase integration span
+300                                                                                  iteration max  number	
+50	                                                                                 refresh frequency
+-100.0      -10  -1    -10                                                           parameter low bunder(c2/c3/slop)
+ 100.0       10   1     10                                                           parameter up  bunder
 $ENDDOPPLERL0
 
-keys:
-#run mode 0/get data info 1/spectrum scan 2/frequency compute 3/data check 4/frequency compute(debug out)
+
+12015-07-15T13:20:53.000                                                             arbitrary start time
+2015-07-15T13:36:20.000
+#run mode 0/get data info 1/spectrum scan 2/frequency compute 3/data check 4/debugout
 #data type 0/real 1/image 2/combind
-#span control: 0/1: data time span/arbitrary span
 /mnt/data1/rawdata/VEX/VEX_X12_09_1637.dat
 /mnt/data1/rawdata/CAS/aux/20170719_CASSINI_2015.dat
+/mnt/data1/rawdata/NHR/TM/20150715-RSR/20150715_TM_NHR.dat
 12011-12-09T08:38:17.000                                                             arbitrary start time
 12011-12-09T09:10:19.000                                                             arbitrary stop  time
 12011-12-09T09:10:19.000
